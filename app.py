@@ -1,12 +1,7 @@
-from fastapi import FastAPI, HTTPException, Depends
-from sqlalchemy.orm import Session
-from Models import Course
+from fastapi import FastAPI
 from database import SessionLocal
-from pydantic import BaseModel
-
 
 app = FastAPI()
-
 
 def get_db():
     db = SessionLocal()
@@ -14,5 +9,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-

@@ -1,5 +1,5 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import validates
@@ -16,7 +16,7 @@ class Lesson(Base):
     id = Column(Integer, primary_key=True)
     title = Column(String(length=100))
     endpoint = Column(UUID(as_uuid=True), default=uuid.uuid4, unique=True)
-    data = Column(Text)
+    data = Column(JSON)
     next_lesson_id = Column(Integer, ForeignKey('lessons.id'), nullable=True)
     next_lesson = relationship('Lesson', remote_side=[id], post_update=True)
     course_id = Column(Integer, ForeignKey('courses.id'), nullable=True)
