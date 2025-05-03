@@ -15,6 +15,7 @@ class Lesson(Base):
     __tablename__ = 'lessons'
     id = Column(Integer, primary_key=True)
     title = Column(String(length=100))
+    index = Column(Integer)
     endpoint = Column(UUID(as_uuid=True), default=uuid.uuid4, unique=True)
     data = Column(JSON)
     next_lesson_id = Column(Integer, ForeignKey('lessons.id'), nullable=True)
@@ -29,6 +30,4 @@ class Lesson(Base):
     def get_course(self, db: Session):
         return db.query(Course).filter(Course.id == self.course_id).first()
 
-    def __repr__(self):
-        return f"<Lesson title={self.title}, endpoint={self.endpoint}>"
 

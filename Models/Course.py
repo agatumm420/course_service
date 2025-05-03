@@ -11,17 +11,24 @@ user_course_association = Table(
     primary_key=True
 )
 
-course_resource_association = Table(
-    'course_resource', Base.metadata,
-    Column('course_id',   Integer, ForeignKey('courses.id',   ondelete='CASCADE')),
-    Column('resource_id', Integer, ForeignKey('resources.id', ondelete='CASCADE')),
-    primary_key=True
-)
 
 class Course(Base):
     __tablename__ = 'courses'
-    id      = Column(Integer, primary_key=True)
-    title   = Column(String, nullable=False)
+    id         = Column(Integer, primary_key=True)
+    title      = Column(String,  nullable=False)
+
+    resource_id = Column(
+        Integer,
+        ForeignKey('resources.id', ondelete='SET NULL'),
+        nullable=True,
+        unique=True,  
+    )
+ 
+    resource   = relationship(
+        'Resource',
+        back_populates='course',
+        uselist=False,
+    )
 
     lessons   = relationship(
         'Lesson',
@@ -30,11 +37,6 @@ class Course(Base):
     )
     users     = relationship(
         'User',
-        secondary=user_course_association,
-        back_populates='courses'
-    )
-    resources = relationship(
-        'Resource',
-        secondary=course_resource_association,
+        secondary='user_course', 
         back_populates='courses'
     )
