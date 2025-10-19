@@ -15,3 +15,13 @@ class CourseDataRepository:
         cd = self.session.get(CourseData, course_data_id)
         if cd:
             cd.current_lesson_id = lesson_id
+    def get_by_user_and_course(self, user_id: int, course_id: int) -> CourseData | None:
+        return (
+            self.session
+                .query(CourseData)
+                .filter(
+                    CourseData.user_id   == user_id,
+                    CourseData.course_id == course_id
+                )
+                .first()
+        )
