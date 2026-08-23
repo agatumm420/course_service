@@ -68,6 +68,7 @@
     .btn.danger { color: var(--danger); }
     .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
     dialog { width: min(520px, calc(100% - 28px)); padding: 0; border: 0; border-radius: 20px; box-shadow: 0 30px 90px rgba(23, 33, 27, .25); }
+    #lessonDialog { width: min(820px, calc(100% - 28px)); max-height: 92vh; overflow: auto; }
     dialog::backdrop { background: rgba(23, 33, 27, .4); backdrop-filter: blur(3px); }
     form { padding: 26px; }
     form h2 { font-family: Georgia, serif; font-size: 28px; font-weight: 500; margin-bottom: 22px; }
@@ -75,6 +76,22 @@
     input, textarea, select { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: white; outline: none; }
     input:focus, textarea:focus, select:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
     textarea { min-height: 110px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+    .component-editor-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 20px; }
+    .component-editor-head label { margin: 0; }
+    .saved-component-picker { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 10px; }
+    .component-editor { display: grid; gap: 12px; margin-top: 10px; }
+    .component-card { padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: #faf9f4; }
+    .component-card-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .component-card-head strong { font-size: 14px; }
+    .component-identity { flex: 1; }
+    .component-identity label { margin-top: 8px; }
+    .component-badge { display: inline-block; margin-left: 7px; padding: 3px 7px; border-radius: 999px; color: var(--brand); background: var(--brand-soft); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .component-fields { display: grid; gap: 10px; margin-top: 12px; }
+    .component-field { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(150px, 1fr) minmax(190px, 1.3fr) auto; gap: 8px; align-items: end; padding-top: 10px; border-top: 1px solid var(--line); }
+    .component-field label { margin-top: 0; }
+    .component-field textarea { min-height: 44px; }
+    .component-empty { padding: 20px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); text-align: center; }
+    .add-field { margin-top: 12px; }
     .form-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 24px; }
     .form-actions div { display: flex; gap: 8px; }
     .toast { position: fixed; right: 20px; bottom: 20px; max-width: 360px; padding: 13px 16px; border-radius: 12px; color: white; background: var(--ink); box-shadow: var(--shadow); opacity: 0; transform: translateY(12px); pointer-events: none; transition: .2s; }
@@ -88,6 +105,8 @@
       .panel-head { align-items: flex-start; flex-direction: column; }
       .lesson { grid-template-columns: 34px minmax(0, 1fr); }
       .actions { grid-column: 2; }
+      .component-field { grid-template-columns: 1fr; }
+      .saved-component-picker { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -152,11 +171,18 @@
       <h2 id="lessonFormTitle">New lesson</h2>
       <input type="hidden" id="lessonId">
       <label for="lessonTitle">Title</label>
-      <input id="lessonTitle" maxlength="160" required placeholder="e.g. Notice your patterns">
+      <input id="lessonTitle" maxlength="100" required placeholder="e.g. Notice your patterns">
       <label for="lessonCourse">Course</label>
       <select id="lessonCourse"></select>
-      <label for="lessonData">Lesson data (JSON)</label>
-      <textarea id="lessonData" spellcheck="false">{}</textarea>
+      <div class="component-editor-head">
+        <label>Components</label>
+        <button type="button" class="btn secondary" id="addComponent">+ New component</button>
+      </div>
+      <div class="saved-component-picker">
+        <select id="savedComponentSelect" aria-label="Saved component"></select>
+        <button type="button" class="btn secondary" id="addSavedComponent">Add saved component</button>
+      </div>
+      <div class="component-editor" id="componentEditor"></div>
       <div class="form-actions">
         <button type="button" class="btn danger" id="deleteLesson" hidden>Delete</button>
         <div>
@@ -170,7 +196,8 @@
   <div class="toast" id="toast"></div>
 
   <script>
-    const state = { courses: [], lessons: [], selectedCourseId: null };
+    const state = { courses: [], lessons: [], components: [], selectedCourseId: null };
+    let draftComponents = [];
     const $ = selector => document.querySelector(selector);
 
     async function api(path, options = {}) {
@@ -195,7 +222,10 @@
     }
 
     async function loadCourses(keepSelection = true) {
-      state.courses = await api("/api/admin/courses");
+      [state.courses, state.components] = await Promise.all([
+        api("/api/admin/courses"),
+        api("/api/admin/components")
+      ]);
       if (!keepSelection || !state.courses.some(c => c.id === state.selectedCourseId)) {
         state.selectedCourseId = state.courses[0]?.id ?? null;
       }
@@ -252,7 +282,7 @@
           <span class="position">${index + 1}</span>
           <div>
             <div class="lesson-title">${escapeHtml(lesson.title)}</div>
-            <div class="lesson-meta">${escapeHtml(JSON.stringify(lesson.data))}${lesson.next_lesson_id ? ` · next → #${lesson.next_lesson_id}` : " · final lesson"}</div>
+            <div class="lesson-meta">${escapeHtml(lesson.components.map(component => component.name).join(" · ") || "No components")} · ${lesson.components.reduce((total, component) => total + component.fields.length, 0)} fields${lesson.next_lesson_id ? ` · next → #${lesson.next_lesson_id}` : " · final lesson"}</div>
           </div>
           <div class="actions">
             <button class="icon-btn" title="Move up" data-up="${lesson.id}" ${index === 0 ? "disabled" : ""}>↑</button>
@@ -300,7 +330,19 @@
       $("#lessonId").value = lesson?.id || "";
       $("#lessonTitle").value = lesson?.title || "";
       $("#lessonCourse").value = lesson?.course_id ?? state.selectedCourseId ?? "";
-      $("#lessonData").value = JSON.stringify(lesson?.data || {}, null, 2);
+      draftComponents = lesson
+        ? lesson.components.map(component => ({
+            id: component.id,
+            existing: true,
+            name: component.name,
+            fields: component.fields.map(field => ({
+              name: field.name,
+              value: field.value || "",
+              dataText: field.data === null ? "" : JSON.stringify(field.data, null, 2)
+            }))
+          }))
+        : [newComponent()];
+      renderComponentEditor();
       $("#lessonFormTitle").textContent = lesson ? "Edit lesson" : "New lesson";
       $("#deleteLesson").hidden = !lesson;
       $("#lessonDialog").showModal();
@@ -324,17 +366,41 @@
 
     $("#lessonForm").onsubmit = async event => {
       event.preventDefault();
-      let data;
-      try { data = JSON.parse($("#lessonData").value || "{}"); }
-      catch (_) { notify("Lesson data is not valid JSON", true); return; }
-      if (Array.isArray(data) || data === null || typeof data !== "object") {
-        notify("Lesson data must be a JSON object", true); return;
-      }
       const id = $("#lessonId").value;
+      const components = [];
+      const newComponentNames = new Set();
+      for (const component of draftComponents) {
+        if (component.existing) {
+          components.push({ component_id: component.id });
+          continue;
+        }
+        const componentName = component.name.trim();
+        if (!componentName) {
+          notify("Every component needs a name", true); return;
+        }
+        if (state.components.some(saved => saved.name === componentName) || newComponentNames.has(componentName)) {
+          notify(`A component named “${componentName}” already exists`, true); return;
+        }
+        newComponentNames.add(componentName);
+        const fields = [];
+        for (const field of component.fields) {
+          const name = field.name.trim();
+          if (!name) {
+            notify("Every component field needs a name", true); return;
+          }
+          let data = null;
+          if (field.dataText.trim()) {
+            try { data = JSON.parse(field.dataText); }
+            catch (_) { notify(`JSON data for field “${name}” is invalid`, true); return; }
+          }
+          fields.push({ name, value: field.value.trim() || null, data });
+        }
+        components.push({ name: componentName, fields });
+      }
       const payload = {
         title: $("#lessonTitle").value,
         course_id: $("#lessonCourse").value ? Number($("#lessonCourse").value) : null,
-        data
+        components
       };
       try {
         const saved = await api(id ? `/api/admin/lessons/${id}` : "/api/admin/lessons", {
@@ -371,6 +437,17 @@
     $("#newCourse").onclick = () => openCourse();
     $("#editCourse").onclick = () => openCourse(selectedCourse());
     $("#newLesson").onclick = () => openLesson();
+    $("#addComponent").onclick = () => {
+      draftComponents.push(newComponent());
+      renderComponentEditor();
+    };
+    $("#addSavedComponent").onclick = () => {
+      const componentId = Number($("#savedComponentSelect").value);
+      const component = state.components.find(item => item.id === componentId);
+      if (!component || draftComponents.some(item => item.id === componentId)) return;
+      draftComponents.push(existingComponent(component));
+      renderComponentEditor();
+    };
     document.querySelectorAll("[data-close]").forEach(button => {
       button.onclick = () => document.getElementById(button.dataset.close).close();
     });
@@ -379,6 +456,131 @@
       return String(value).replace(/[&<>"']/g, char => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
       })[char]);
+    }
+
+    function newField() {
+      return { name: "", value: "", dataText: "" };
+    }
+
+    function newComponent() {
+      return { id: null, existing: false, name: "", fields: [newField()] };
+    }
+
+    function existingComponent(component) {
+      return {
+        id: component.id,
+        existing: true,
+        name: component.name,
+        fields: component.fields.map(field => ({
+          name: field.name,
+          value: field.value || "",
+          dataText: field.data === null ? "" : JSON.stringify(field.data, null, 2)
+        }))
+      };
+    }
+
+    function renderComponentEditor() {
+      $("#componentEditor").innerHTML = draftComponents.length
+        ? draftComponents.map((component, componentIndex) => `
+          <section class="component-card">
+            <div class="component-card-head">
+              <div class="component-identity">
+                <strong>Component ${componentIndex + 1}</strong>${component.existing ? `<span class="component-badge">Saved</span>` : ""}
+                <label>Component name</label>
+                <input maxlength="255" required placeholder="e.g. quote" value="${escapeHtml(component.name)}" data-component-name="${componentIndex}" ${component.existing ? "readonly" : ""}>
+              </div>
+              <div class="actions">
+                <button type="button" class="icon-btn" title="Move component up" data-component-up="${componentIndex}" ${componentIndex === 0 ? "disabled" : ""}>↑</button>
+                <button type="button" class="icon-btn" title="Move component down" data-component-down="${componentIndex}" ${componentIndex === draftComponents.length - 1 ? "disabled" : ""}>↓</button>
+                <button type="button" class="icon-btn btn danger" title="Remove component" data-remove-component="${componentIndex}">×</button>
+              </div>
+            </div>
+            <div class="component-fields">
+              ${component.fields.map((field, fieldIndex) => `
+                <div class="component-field">
+                  <div>
+                    <label>Field name</label>
+                    <input maxlength="255" required placeholder="e.g. quote_text" value="${escapeHtml(field.name)}" data-field-name="${componentIndex}:${fieldIndex}" ${component.existing ? "readonly" : ""}>
+                  </div>
+                  <div>
+                    <label>String value (optional)</label>
+                    <input placeholder="Text value" value="${escapeHtml(field.value)}" data-field-value="${componentIndex}:${fieldIndex}" ${component.existing ? "readonly" : ""}>
+                  </div>
+                  <div>
+                    <label>JSON data (optional)</label>
+                    <textarea spellcheck="false" placeholder='{"key": "value"}' data-field-data="${componentIndex}:${fieldIndex}" ${component.existing ? "readonly" : ""}>${escapeHtml(field.dataText)}</textarea>
+                  </div>
+                  ${component.existing ? "" : `<button type="button" class="icon-btn btn danger" title="Remove field" data-remove-field="${componentIndex}:${fieldIndex}">×</button>`}
+                </div>`).join("")}
+            </div>
+            ${component.existing ? "" : `<button type="button" class="btn secondary add-field" data-add-field="${componentIndex}">+ Field</button>`}
+          </section>`).join("")
+        : `<div class="component-empty">No components yet. Add one to build this lesson.</div>`;
+
+      renderSavedComponentOptions();
+      bindComponentEditor();
+    }
+
+    function renderSavedComponentOptions() {
+      const assignedIds = new Set(draftComponents.filter(component => component.existing).map(component => component.id));
+      const available = state.components.filter(component => !assignedIds.has(component.id));
+      $("#savedComponentSelect").innerHTML = available.length
+        ? available.map(component => `<option value="${component.id}">${escapeHtml(component.name)} · ${component.fields.length} field${component.fields.length === 1 ? "" : "s"}</option>`).join("")
+        : `<option value="">No saved components available</option>`;
+      $("#addSavedComponent").disabled = !available.length;
+    }
+
+    function bindComponentEditor() {
+      document.querySelectorAll("[data-component-name]").forEach(input => {
+        input.oninput = () => {
+          draftComponents[Number(input.dataset.componentName)].name = input.value;
+        };
+      });
+      document.querySelectorAll("[data-field-name]").forEach(input => {
+        input.oninput = () => updateDraftField(input.dataset.fieldName, "name", input.value);
+      });
+      document.querySelectorAll("[data-field-value]").forEach(input => {
+        input.oninput = () => updateDraftField(input.dataset.fieldValue, "value", input.value);
+      });
+      document.querySelectorAll("[data-field-data]").forEach(input => {
+        input.oninput = () => updateDraftField(input.dataset.fieldData, "dataText", input.value);
+      });
+      document.querySelectorAll("[data-add-field]").forEach(button => {
+        button.onclick = () => {
+          draftComponents[Number(button.dataset.addField)].fields.push(newField());
+          renderComponentEditor();
+        };
+      });
+      document.querySelectorAll("[data-remove-field]").forEach(button => {
+        button.onclick = () => {
+          const [componentIndex, fieldIndex] = button.dataset.removeField.split(":").map(Number);
+          draftComponents[componentIndex].fields.splice(fieldIndex, 1);
+          renderComponentEditor();
+        };
+      });
+      document.querySelectorAll("[data-remove-component]").forEach(button => {
+        button.onclick = () => {
+          draftComponents.splice(Number(button.dataset.removeComponent), 1);
+          renderComponentEditor();
+        };
+      });
+      document.querySelectorAll("[data-component-up]").forEach(button => {
+        button.onclick = () => moveComponent(Number(button.dataset.componentUp), -1);
+      });
+      document.querySelectorAll("[data-component-down]").forEach(button => {
+        button.onclick = () => moveComponent(Number(button.dataset.componentDown), 1);
+      });
+    }
+
+    function updateDraftField(key, property, value) {
+      const [componentIndex, fieldIndex] = key.split(":").map(Number);
+      draftComponents[componentIndex].fields[fieldIndex][property] = value;
+    }
+
+    function moveComponent(index, direction) {
+      [draftComponents[index], draftComponents[index + direction]] =
+        [draftComponents[index + direction], draftComponents[index]];
+      renderComponentEditor();
     }
 
     loadCourses().catch(error => notify(error.message, true));

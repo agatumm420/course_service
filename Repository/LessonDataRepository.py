@@ -1,27 +1,20 @@
-from sqlalchemy.orm import Session
-from ..Models.LessonData import LessonData
-from sqlalchemy.orm.exc import NoResultFound
+from __future__ import annotations
+
+from typing import Any
+
+from psycopg import Connection
+from psycopg.types.json import Json
+
 
 class LessonDataRepository:
-    def __init__(self, session: Session):
-        self.session = session
+    def __init__(self, connection: Connection[dict[str, Any]]):
+        self.connection = connection
 
-    def get_by_lesson_id(self, lesson_id: int) -> LessonData | None:
-        try:
-            return (
-                self.session
-                    .query(LessonData)
-                    .filter(LessonData.lesson_id == lesson_id)
-                    .one()
-            )
-        except NoResultFound:
-            return None
-
-    def create(self, lesson_id: int, course_data_id: int, data: dict) -> LessonData:
-        ld = LessonData(
-            lesson_id=lesson_id,
-            course_data_id=course_data_id,
-            data=data
+    def replace(self, lesson_id: int, data: dict[str, Any]) -> None:
+        self.connection.execute(
+            "DELETE FROM lesson_data WHERE lesson_id = %s", (lesson_id,)
         )
-        self.session.add(ld)
-        return ld
+        self.connection.execute(
+            "INSERT INTO lesson_data (lesson_id, data) VALUES (%s, %s)",
+            (lesson_id, Json(data)),
+        )

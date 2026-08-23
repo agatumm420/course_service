@@ -42,31 +42,3 @@ def get_db() -> Iterator[Connection[dict[str, Any]]]:
         yield connection
     finally:
         connection.close()
-
-
-def row_to_course(
-    row: dict[str, Any], lesson_count: int | None = None
-) -> dict[str, Any]:
-    result = {
-        "id": row["id"],
-        "title": row["title"],
-        "description": row["description"],
-        "created_at": row["created_at"],
-    }
-    if lesson_count is not None:
-        result["lesson_count"] = lesson_count
-    return result
-
-
-def row_to_lesson(row: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": row["id"],
-        "title": row["title"],
-        "course_id": row["course_id"],
-        "course_title": row.get("course_title"),
-        "position": row["position"],
-        "endpoint": row["endpoint"],
-        "data": row["data"] or {},
-        "next_lesson_id": row["next_lesson_id"],
-        "created_at": row["created_at"],
-    }
